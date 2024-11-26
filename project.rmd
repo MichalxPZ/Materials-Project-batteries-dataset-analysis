@@ -16,6 +16,11 @@ set.seed(23)
 ```
 ## Podsumowanie
 
+Celem niniejszej analizy było zbadanie danych dotyczących baterii oraz stworzenie modelu predykcyjnego dla średniego napięcia na podstawie pozostałych atrybutów baterii.
+Analiza została przeprowadzona na podstawie zbioru danych udostępnionego przez Materials Project,
+inicjatywę naukową Departamentu Energii USA.
+Po przeprowadzeniu analizy stwierdzono, że największy wpływ na średnią wartość napięcia baterii miała energia wolumetryczna.
+
 ## Wykorzystane biblioteki
 W raporcie wykorzystano następujące biblioteki:
 
@@ -28,6 +33,7 @@ library(plotly)
 library(ggcorrplot)
 library(caret)
 library(tibble)
+library(kableExtra)
 ```
 ## Wczytanie danych
 Materials Project to inicjatywa naukowa Departamentu Energii USA, której celem jest dostarczanie otwartych danych i narzędzi do analizy materiałów.
@@ -69,7 +75,11 @@ kable(matrix(str_output, ncol = 1), col.names = "Struktura ramki danych")
 ```
 ### Kilka pierwszych wierszy ze zbioru danych
 ```{r data-head, echo=FALSE}
-DT::datatable(head(df, 30), style="bootstrap", filter = "top", rownames = FALSE, extensions = "Buttons", options = list(scrollX = TRUE, dom = 'Bfrtip'))
+head(df, 30) %>%
+  kable("html", escape = F) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "responsive"), full_width = FALSE) %>%
+  column_spec(1, width = "200px") %>%
+  scroll_box(width = "100%", height = "400px")
 ```
 ### Analiza jakości danych
 Sprawdzenie ile jest pustych wartościami w poszczególnych kolumnach oraz ile w zbiorze jest zduplikowanych wierszy.
@@ -79,8 +89,9 @@ kable(na_counts, col.names = c("Brakujące wartości"), caption = "Liczba brakuj
 ```
 ```{r data-duplicates}
 duplicates_count <- sum(duplicated(df))
-print(paste("Liczba zduplikowanych wierszy:", duplicates_count))
 ```
+Liczba zduplikowanych wierszy: **`r duplicates_count`**.
+
 Z powodu braku zduplikowanych danych oraz braku wartości pustych w zbiorze - dane nie wymagają czyszczenia.
 
 ## Podstawowe statystyki
@@ -288,6 +299,12 @@ ggplotly(p1)
 ```
 
 ### Korelacja pomiędzy atrybutami
+
+Poniżej przedstawiono macierz korelacji między wybranymi atrybutami zestawu danych.
+Kolory kafelków wskazują wartość współczynnika korelacji Pearsona:
+niebieski reprezentuje silną ujemną korelację, biały brak korelacji,
+a czerwony silną dodatnią korelację. Liczby na kafelkach przedstawiają dokładne wartości korelacji,
+co umożliwia szybką analizę zależności między zmiennymi.
 ```{r analiza-macierz-korelacji}
 cor_matrix <- df %>%
   select(`Max.Delta.Volume`:last_col()) %>%
@@ -321,6 +338,9 @@ correlation_plot <- ggplot(
 
 ggplotly(correlation_plot)
 ```
+
+Poniżej przedstawiono wykresy ilustrujące zależności między wybranymi parami atrybutów.
+Każdy wykres pokazuje punktowy rozkład obserwacji oraz linię trendu wyznaczoną za pomocą modelu liniowego.
 ```{r korelacje-wykresy}
 plot_correlation <- function(df, var1, var2) {
   ggplot(df, aes_string(x = var1, y = var2)) +
@@ -366,11 +386,15 @@ co może wpływać na stabilność modeli predykcyjnych.
 
 ## Regresor
 
+W tej sekcji przedstawiono proces tworzenia modelu regresji, obejmujący redukcję atrybutów o wysokiej korelacji,
+przygotowanie zbiorów danych oraz trenowanie modelu z wykorzystaniem walidacji krzyżowej.
+Wyniki modelu zostały ocenione za pomocą metryk jakości oraz wizualnie porównane z danymi testowymi.
+
 ### Redukcja korelacji
-Aby zredukować korelacje między atrybutami, zastosowano funkcję findCorrelation z pakietu caret, ustawiając próg (cutoff) na 0.8.
+Aby zredukować korelacje między atrybutami, zastosowano funkcję findCorrelation z pakietu caret, ustawiając próg (cutoff) na 0.6.
 Funkcja ta identyfikuje atrybuty, które są silnie skorelowane i mogą zostać usunięte z analizy.
 ```{r redukcja-korelacji}
-attributes_to_remove <- cor_matrix %>% findCorrelation(cutoff = 0.8, names = TRUE)
+attributes_to_remove <- cor_matrix %>% findCorrelation(cutoff = 0.6, names = TRUE)
 ```
 Atrybuty, które zostały wybrane do usunięcia: `r attributes_to_remove`.
 
@@ -411,27 +435,65 @@ model_lm <- train(
 ```
 
 ### Podsumowanie modelu
+
+Podsumowanie zawiera szczegółowe informacje o współczynnikach regresji,
+w tym ich wartości, błędy standardowe, statystyki t oraz p-wartości,
+co pozwala ocenić znaczenie poszczególnych predyktorów w modelu.
 ```{r, podsumowanie-modelu, cache = TRUE}
 model_summary <- summary(model_lm)
+
+residuals_summary <- data.frame(
+  Metric = c("Min", "1Q", "Mediana", "Brak reszty", "3Q", "Max"),
+  Value = as.numeric(summary(model_summary$residuals))
+)
+kable(residuals_summary, caption = "Podsumowanie reszt modelu")
 
 kable(as.data.frame(model_summary$coefficients),
       caption = "Podsumowanie wyników modelu liniowego",
       col.names = c("Współczynnik", "Wartość", "Standard Error", "t-Statystyka", "p-Wartość"))
+
+fit_statistics <- data.frame(
+  Metric = c("R-squared", "Adjusted R-squared", "Residual Std. Error"),
+  Value = c(
+    model_summary$r.squared,
+    model_summary$adj.r.squared,
+    model_summary$sigma
+  )
+)
+kable(fit_statistics, caption = "Statystyki dopasowania modelu")
+
+f_stat <- data.frame(
+  Metric = "F-statistic",
+  Value = model_summary$fstatistic[1],
+  DF = paste(model_summary$fstatistic[2:3], collapse = " and "),
+  `P-value` = pf(model_summary$fstatistic[1],
+                 model_summary$fstatistic[2],
+                 model_summary$fstatistic[3],
+                 lower.tail = FALSE)
+)
+kable(f_stat, caption = "Test istotności całego modelu")
 ```
 
 ### Predykcje na zbiorze testowym
+
+Wyniki predykcji na zbiorze testowym są oceniane za pomocą metryk jakości takich jak RMSE (Root Mean Square Error),
+R² (współczynnik determinacji) oraz MAE (Mean Absolute Error). Metryki te pozwalają ocenić dokładność i dopasowanie modelu do danych.
 ```{r, predykcje-na-modelu, cache = TRUE}
 predictions <- predict(model_lm, newdata = testing_data)
 post_resample <- postResample(pred = predictions,
                               obs = testing_data$Average.Voltage)
-kable(post_resample, col.names = c("RMSE", "R^2", "MAE"), caption = "Ocena modelu - metryki jakości predykcji")
+kable(post_resample, col.names = c("Metryka", "Wartość"), caption = "Ocena modelu - metryki jakości predykcji")
 ```
 
 ### Ocena modelu
+
+RMSE (Root Mean Square Error) obliczono jako miarę różnicy między wartościami rzeczywistymi a przewidywanymi na zbiorze testowym.
+Wartość ta informuje o średnim błędzie prognoz w jednostkach zmiennej celu. Wykres wizualizuje różnice między wartościami rzeczywistymi a przewidzianymi przez regresor,
+co ułatwia identyfikację ewentualnych wzorców błędu.
 ```{r, ocena-modelu, cache = TRUE}
 rmse <- sqrt(mean((testing_data$Average.Voltage - predictions)^2))
 ```
-RMSE na zbiorze testowym: `r rmse`
+RMSE na zbiorze testowym: **`r rmse`**
 
 Poniższy wykres przedstawia wartości zbioru testowego oraz wartości przewidziane
 przez regresor.
@@ -482,6 +544,9 @@ interactive_plot
 ```
 
 ### Ważność atrybutów
+
+Analiza ważności atrybutów pozwala zidentyfikować te cechy, które mają największy wpływ na przewidywanie zmiennej celu.
+Wartości ważności są wizualizowane w postaci wykresu słupkowego, co ułatwia interpretację i wybór istotnych predyktorów.
 ```{r, waznosc-atrybutow-modelu, cache = TRUE}
 importance <- varImp(model_lm, scale = FALSE)
 importance_df <- importance$importance %>%
@@ -497,3 +562,6 @@ p <- ggplot(importance_df, aes(x = reorder(attribute, Overall), y = Overall, fil
 
 ggplotly(p)
 ```
+
+Analizując powyższy wykres można stwierdzić, że największy wpływ na przewidywaną wartość średniego napięcia miał parametr energii wulumetrycznej oraz pojemności wolumetrycznej.
+Mniejszy wpływ miały również trybuty maksymalnej zmiany objętości oraz wskaźnik stabilności materiału.
