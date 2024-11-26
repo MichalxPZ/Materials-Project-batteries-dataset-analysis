@@ -1,0 +1,350 @@
+---
+title: "Analiza meteriałów używanych w bateriach"
+author: "Michał Zieliński"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: "hide"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      out.width = "100%")
+set.seed(23)
+```
+## Podsumowanie
+
+## Wykorzystane biblioteki
+W raporcie wykorzystano następujące biblioteki:
+
+```{r libraries, class.source="fold-show"}
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(plotly)
+library(ggcorrplot)
+library(caret)
+```
+## Wczytanie danych
+Materials Project to inicjatywa naukowa Departamentu Energii USA, której celem jest dostarczanie otwartych danych i narzędzi do analizy materiałów.
+Jednym z kluczowych zbiorów danych dostępnych w ramach Materials Project jest baza danych dotycząca materiałów używanych w bateriach, która zawiera informacje o ich składzie chemicznym i parametrach wydajnościowych.
+
+```{r wczytanie-danych}
+df <- read.csv("./data/mp_batteries.csv", na.strings="?")
+df <- tbl_df(df)
+```
+### Opis atrybutów
+
+| Nazwa atrybutu            | Opis                                                                                                               |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------|
+| Battery ID                | Identyfikator baterii.                                                                                             |
+| Battery Formula           | Wzór chemiczny materiału baterii.                                                                                  |
+| Working Ion               | Główny jon, który odpowiada za transport ładunku w baterii.                                                        |
+| Formula Charge            | Wzór chemiczny materiału baterii w stanie naładowanym.                                                             |
+| Formula Discharge         | Wzór chemiczny materiału baterii w stanie rozładowanym.                                                            |
+| Max Delta Volume          | Zmiana objętości w % dla danego kroku napięcia za pomocą wzoru : max(charge, discharge)/min(charge, discharge) -1. |
+| Average Voltage           | Średnie napięcie dla poszczególnego kroku napięcia.                                                                |
+| Gravimetric Capacity      | Pojemność grawimetryczna, czyli ilość energii na jednostkę masy (mAh/g).                                           |
+| Volumetric Capacity       | Pojemność wolumetryczna, czyli ilość energii na jednostkę objętości (mAh/cm³).                                     |
+| Gravimetric Energy        | Gęstość energii w odniesieniu do masy baterii (Wh/kg).                                                             |
+| Volumetric Energy         | Gęstość energii w odniesieniu do objętości baterii (Wh/L).                                                         |
+| Atomic Fraction Charge    | Udział atomowy składników w stanie naładowanym.                                                                    |
+| Atomic Fraction Discharge | Udział atomowy składników w stanie rozładowanym.                                                                   |
+| Stability Charge          | Wskaźnik stabilności materiału w stanie naładowanym.                                                               |
+| Stability Discharge       | Wskaźnik stabilności materiału w stanie rozładowanym.                                                              |
+| Steps                     | Liczba odrębnych kroków napięcia od pełnego naładowania do rozładowana, oparta na stabilnych stanach pośrednich.   |
+| Max Voltage Step          | Maksymalna bezwzględna różnica między sąsiednimi krokami napięcia.                                                 |
+
+## Czyszczenie zbioru danych
+Poniżej znajduje się lista kroków wykonanych na zbiorze danych w celu przygotowania go do anaizy.
+
+### Struktura danych
+```{r data-structure, echo=FALSE}
+str(df)
+```
+### Kilka pierwszych wierszy ze zbioru danych
+```{r data-head, echo=FALSE}
+head(df)
+```
+### Analiza jakości danych
+Sprawdzenie ile jest pustych wartościami w poszczególnych kolumnach oraz ile w zbiorze jest zduplikowanych wierszy.
+```{r data-missing-values}
+colSums(is.na(df))
+```
+```{r data-duplicates}
+duplicates_count <- sum(duplicated(df))
+print(paste("Liczba zduplikowanych wierszy:", duplicates_count))
+```
+Z powodu braku zduplikowanych danych oraz braku wartości pustych w zbiorze - dane nie wymagają czyszczenia.
+
+## Podstawowe statystyki
+Zbiór danych składa się z **`r nrow(df)`** wierszy
+(obserwacji) i **`r ncol(df)`** kolumn (atrybutów).
+
+```{r statystyki}
+kable(summary(df %>% select(Max.Delta.Volume:Volumetric.Energy)))
+kable(summary(df %>% select(Atomic.Fraction.Charge:Max.Voltage.Step)))
+```
+
+### Cechy statystyczne zbioru danych
+W tym zbiorze można odczytać następujące cechy statystyczne:
+
+- **Wartości skrajne**: Zauważalna jest duża zmienność i obecność skrajnych wartości (np. Max.Delta.Volume, Volumetric.Capacity, Gravimetric.Energy), które mogą wymagać dalszej analizy pod kątem anomalii.
+- **Wartości ujemne**: Atrybuty takie jak Average.Voltage, Gravimetric.Energy, Volumetric.Energy zawierają ujemne wartości, co sugeruje możliwość błędów w danych lub specyficzną charakterystykę badanych baterii.
+- **Skumulowane dane**: Większość danych ma bardzo małą zmienność w niektórych atrybutach (np. Steps, Max.Voltage.Step), co może sugerować, że niektóre zmienne są stałe w większości przypadków.
+
+## Analiza danych
+Poniżej znajduje się analiza zbioru danych w celu zbadania rozkładów wartości poszczególnych atrybutów oraz sprawdzenia występujących między nimi korelacji.
+
+### Rozkład wartości atrybutów
+
+```{r analiza-rozkładu-głównego-jonu}
+p <- ggplot(df, aes(x = `Working.Ion`)) +
+  geom_bar(fill = "blue", color = "black") +
+  labs(
+    title = "Histogram głównego jonu baterii",
+    x = "Główny Jon",
+    y = "Liczba"
+  ) +
+  theme_light()
+
+ggplotly(p)
+```
+
+```{r analiza-rozkładu-maksymalnej zmiany objętości}
+p1 <- ggplot(df, aes(x = `Max.Delta.Volume`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład maksymalnej zmiany objętości dla danego kroku",
+    x = "Maksymalna zmiana objętości",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Średnie napięcie}
+p1 <- ggplot(df, aes(x = `Average.Voltage`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład średniego napięcia",
+    x = "Średnie napięcie",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Pojemność grawimetryczna}
+p1 <- ggplot(df, aes(x = `Gravimetric.Capacity`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład pojemności grawimetrycznej",
+    x = "Pojemność grawimetryczna",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Pojemność wolumetryczna}
+p1 <- ggplot(df, aes(x = `Volumetric.Capacity`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład pojemności wolumetrycznej",
+    x = "Pojemność wolumetryczna",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Gęstość energii w odniesieniu do masy baterii}
+p1 <- ggplot(df, aes(x = `Gravimetric.Energy`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład energii grawimetrycznej",
+    x = "Energia grawimetryczna",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Gęstość energii w odniesieniu do objętości baterii}
+p1 <- ggplot(df, aes(x = `Volumetric.Energy`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład energii wolumetrycznej",
+    x = "Energia wolumetryczna",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Udział atomowy składników w stanie naładowanym}
+p1 <- ggplot(df, aes(x = `Atomic.Fraction.Charge`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład udziału atomowego składników w stanie naładowanym",
+    x = "Udział atomowy składników",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Udział atomowy składników w stanie rozładowanym}
+p1 <- ggplot(df, aes(x = `Atomic.Fraction.Discharge`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład udziału atomowego składników w stanie rozładowanym",
+    x = "Udział atomowy składników",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Wskaźnik stabilności materiału w stanie naładowanym}
+p1 <- ggplot(df, aes(x = `Stability.Charge`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład wskaźnika stabilności materiału w stanie naładowanym",
+    x = "Wskaźnik stabilności materiału",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+
+```
+```{r analiza-rozkładu-Wskaźnik stabilności materiału w stanie rozładowanym}
+p1 <- ggplot(df, aes(x = `Stability.Discharge`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład wskaźnika stabilności materiału w stanie rozładowanym",
+    x = "Wskaźnik stabilności materiału",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Liczba odrębnych kroków napięcia od pełnego naładowania do rozładowana}
+p1 <- ggplot(df, aes(x = `Steps`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład liczba odrębnych kroków napięcia od pełnego naładowania do rozładowana",
+    x = "Liczba kroków",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+```{r analiza-rozkładu-Maksymalna bezwzględna różnica między sąsiednimi krokami napięcia}
+p1 <- ggplot(df, aes(x = `Max.Voltage.Step`)) +
+  geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Rozkład maksymalnej bezwzględnej różnica między sąsiednimi krokami napięcia",
+    x = "Maksymalna bezwzględna różnica między sąsiednimi krokami napięcia",
+    y = "Liczba obserwacji"
+  ) +
+  theme_light()
+
+ggplotly(p1)
+```
+
+### Korelacja pomiędzy atrybutami
+```{r analiza-macierz-korelacji}
+cor_matrix <- df %>%
+  select(`Max.Delta.Volume`:last_col()) %>%
+  cor(method="pearson")
+
+correlation_long <- cor_matrix %>%
+  as.data.frame() %>%
+  mutate(variable1 = colnames(cor_matrix)) %>%
+  pivot_longer(-variable1,
+    names_to = "variable2",
+    values_to = "correlation"
+  ) %>%
+  filter(variable1 > variable2)
+
+correlation_plot <- ggplot(
+  correlation_long,
+  aes(x = variable1, y = variable2, fill = correlation)
+) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "blue", mid = "white", high = "red",
+    midpoint = 0, limits = c(-1, 1)
+  ) +
+  geom_text(aes(label = sprintf("%.2f", correlation)), size = 3) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_blank()
+  ) +
+  labs(fill = "Korelacja")
+
+ggplotly(correlation_plot)
+```
+### Wnioski z analizy
+- **Główne jony**: Widać wyraźną dominację występowania baterii posiadających Lit (Li)
+jako główny jon
+- **Symetryczność wykresów**: Większość wykresów ma charakter prawoskośny,
+co oznacza, że dane są skupione po lewej stronie z długim ogonem w prawo.
+Może to wskazywać na obecność outlierów (wartości odstających) w danych, które mają duży wpływ na analizowane zmienne.
+- **Skumulowane dane**: Wiele atrybutów (np. Steps, Max.Voltage.Step) ma małą zmienność,
+a dane są skoncentrowane w wąskim zakresie, co może ograniczać ich wartość predykcyjną.
+- **Korelacje między atrybutami**: Z analizy korelacji wynika, że niektóre atrybuty
+są ze sobą silnie skorelowane, co sugeruje możliwość ich redukcji lub usunięcia,
+aby uniknąć problemu multikolinearności w dalszej analizie. Na przykład,
+atrybuty takie pary jak Gravimetric.Energy i Volumetric.Energy, Gravimetric.Capacity i Volumetric.Capacity, Stability.Charge i Stablility.Discharge wykazują bardzo wysoką dodatnią korelację,
+co może wpływać na stabilność modeli predykcyjnych.
+
+## Regresor
+
+### Redukcja korelacji
+Aby zredukować korelacje między atrybutami, zastosowano funkcję findCorrelation z pakietu caret, ustawiając próg (cutoff) na 0.6.
+Funkcja ta identyfikuje atrybuty, które są silnie skorelowane i mogą zostać usunięte z analizy.
+```{r redukcja-korelacji}
+attributes_to_remove <- cor_matrix %>% findCorrelation(cutoff = 0.6, names = TRUE)
+```
+Atrybuty, które zostały wybrane do usunięcia: `r attributes_to_remove`.
+
+### Trenowanie modelu
+Do budowy modelu predykcyjnego usunięto atrybuty `r attributes_to_remove` oraz Battery.ID.
+Dane zostały podzielone na zbiór uczący (70%) oraz testowy (30%).
+
+[//]: # (Dodatkowo, w celu oceny modelu, zastosowano ocenę krzyżową &#40;cross-validation&#41;)
+
+[//]: # (z 10-krotnym podziałem zbioru danych na podzbiory.)
+```{r, podzial_danych_do_trenowania, cache = TRUE}
+in_training_data <- createDataPartition(y = df$Average.Voltage, p = 0.70, list = FALSE)
+
+training_data <- df[in_training_data, ] %>% select(-c(Battery.ID, attributes_to_remove))
+testing_data <- df[-in_training_data, ]
+
+# ctrl <- trainControl(method = "cv", number = 2)
+```
+
+### Trenowanie modelu dla Average.Voltage
+```{r, trenowanie-modelu}
+```
+
+### Podsumowanie modelu
+```{r, podsumowanie-modeli}
+```
+
+### Predykcje na zbiorze testowym
+
+### Ocena modelu
+
+
+### Ważność atrybutów
