@@ -27,6 +27,7 @@ library(ggplot2)
 library(plotly)
 library(ggcorrplot)
 library(caret)
+library(tibble)
 ```
 ## Wczytanie danych
 Materials Project to inicjatywa naukowa Departamentu Energii USA, której celem jest dostarczanie otwartych danych i narzędzi do analizy materiałów.
@@ -294,6 +295,35 @@ correlation_plot <- ggplot(
 
 ggplotly(correlation_plot)
 ```
+```{r korelacje-wykresy}
+plot_correlation <- function(df, var1, var2) {
+  ggplot(df, aes_string(x = var1, y = var2)) +
+    geom_point(alpha = 0.5, color = "blue") +
+    geom_smooth(method = "lm", se = TRUE, color = "red", fill = "pink") +
+    theme_minimal() +
+    labs(
+      title = paste("Korelacja między", var1, "a", var2),
+      x = var1,
+      y = var2
+    ) +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 11)
+    )
+}
+
+pairs <- list(
+  c("Gravimetric.Energy", "Volumetric.Energy"),
+  c("Gravimetric.Capacity", "Volumetric.Capacity"),
+  c("Stability.Charge", "Stability.Discharge")
+)
+
+for (pair in pairs) {
+  print(plot_correlation(df, pair[1], pair[2]))
+}
+```
+
 ### Wnioski z analizy
 - **Główne jony**: Widać wyraźną dominację występowania baterii posiadających Lit (Li)
 jako główny jon
@@ -311,40 +341,107 @@ co może wpływać na stabilność modeli predykcyjnych.
 ## Regresor
 
 ### Redukcja korelacji
-Aby zredukować korelacje między atrybutami, zastosowano funkcję findCorrelation z pakietu caret, ustawiając próg (cutoff) na 0.6.
+Aby zredukować korelacje między atrybutami, zastosowano funkcję findCorrelation z pakietu caret, ustawiając próg (cutoff) na 0.8.
 Funkcja ta identyfikuje atrybuty, które są silnie skorelowane i mogą zostać usunięte z analizy.
 ```{r redukcja-korelacji}
-attributes_to_remove <- cor_matrix %>% findCorrelation(cutoff = 0.6, names = TRUE)
+attributes_to_remove <- cor_matrix %>% findCorrelation(cutoff = 0.8, names = TRUE)
 ```
 Atrybuty, które zostały wybrane do usunięcia: `r attributes_to_remove`.
 
 ### Trenowanie modelu
 Do budowy modelu predykcyjnego usunięto atrybuty `r attributes_to_remove` oraz Battery.ID.
 Dane zostały podzielone na zbiór uczący (70%) oraz testowy (30%).
-
-[//]: # (Dodatkowo, w celu oceny modelu, zastosowano ocenę krzyżową &#40;cross-validation&#41;)
-
-[//]: # (z 10-krotnym podziałem zbioru danych na podzbiory.)
-```{r, podzial_danych_do_trenowania, cache = TRUE}
+Dodatkowo, w celu oceny modelu, zastosowano ocenę krzyżową (cross-validation)
+z 10-krotnym podziałem zbioru danych na podzbiory.
+```{r, podzial_danych_do_trenowania}
+df$Battery.Formula <- as.numeric(factor(df$Battery.Formula))
+df$Working.Ion <- as.numeric(factor(df$Working.Ion))
+df$Formula.Charge <- as.numeric(factor(df$Formula.Charge))
+df$Formula.Discharge <- as.numeric(factor(df$Formula.Discharge))
 in_training_data <- createDataPartition(y = df$Average.Voltage, p = 0.70, list = FALSE)
 
 training_data <- df[in_training_data, ] %>% select(-c(Battery.ID, attributes_to_remove))
 testing_data <- df[-in_training_data, ]
 
-# ctrl <- trainControl(method = "cv", number = 2)
+ctrl <- trainControl(method = "cv", number = 10)
 ```
+Poniższy wykres przedstawia podobieństwo rozkładów danych treningowych i
+testowych.
 
-### Trenowanie modelu dla Average.Voltage
-```{r, trenowanie-modelu}
+```{r}
+ggplot() +
+  geom_density(aes(x = Average.Voltage, fill = "Treningowy"), data = training_data, alpha = 0.6) +
+  geom_density(aes(x = Average.Voltage, fill = "Testowy"), data = testing_data, alpha = 0.6) +
+  labs(x = "Average Voltage", y = "Gęstość", fill = "Zbiór danych") +
+  theme_light()
+```
+```{r, trenowanie-modelu, cache = TRUE}
+model_lm <- train(
+  Average.Voltage ~ .,
+  data = training_data,
+  method = "lm",
+  trControl = ctrl
+)
 ```
 
 ### Podsumowanie modelu
-```{r, podsumowanie-modeli}
+```{r, podsumowanie-modelu, cache = TRUE}
+summary(model_lm)
 ```
 
 ### Predykcje na zbiorze testowym
+```{r, predykcje-na-modelu, cache = TRUE}
+predictions <- predict(model_lm, newdata = testing_data)
+post_resample <- postResample(pred = predictions,
+                              obs = testing_data$Average.Voltage)
+post_resample
+```
 
 ### Ocena modelu
+```{r, ocena-modelu, cache = TRUE}
+rmse <- sqrt(mean((testing_data$Average.Voltage - predictions)^2))
+cat("RMSE na zbiorze testowym:", rmse)
+```
 
+Poniższy wykres przedstawia wartości zbioru testowego oraz wartości przewidziane
+przez regresor.
+
+```{r}
+prediction_comparison_df <- tibble(X = testing_data$Battery.ID,
+                                   actual = testing_data$Average.Voltage,
+                                   predicted = predictions)
+prediction_comparison_df$Observation <- seq_along(prediction_comparison_df$X)
+
+p <- ggplot(prediction_comparison_df, aes(x = Observation)) +
+  geom_smooth(aes(y = actual, color = "Wartość rzeczywista"), method = "lm", se = FALSE, linetype = "solid") +
+  geom_smooth(aes(y = predicted, color = "Wartość przewidziana"), method = "lm", se = FALSE, linetype = "dashed") +
+  geom_line(aes(y = actual, color = "Wartość rzeczywista"), linetype = "solid", alpha = 0.2) +
+  geom_line(aes(y = predicted, color = "Wartość przewidziana"), linetype = "dashed", alpha = 0.2) +
+  labs(color = "Wartości", x = "Nr obserwacji", y = "Average Voltage [V]") +
+  theme_light() +
+  scale_x_continuous(
+    breaks = seq(1, nrow(prediction_comparison_df), by = 1000),
+    labels = scales::comma_format()
+  ) +  scale_y_continuous(
+    limits = c(min(prediction_comparison_df$actual, prediction_comparison_df$predicted),
+               max(prediction_comparison_df$actual, prediction_comparison_df$predicted))
+  ) +  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplotly(p)
+```
 
 ### Ważność atrybutów
+```{r, waznosc-atrybutow-modelu, cache = TRUE}
+importance <- varImp(model_lm, scale = FALSE)
+importance_df <- importance$importance %>%
+  rownames_to_column(var = "attribute") %>%
+  arrange(desc(Overall))
+
+p <- ggplot(importance_df, aes(x = reorder(attribute, Overall), y = Overall, fill = Overall)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Atrybut", y = "Ważność") +
+  scale_fill_gradient() +
+  theme_light() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplotly(p)
+```
