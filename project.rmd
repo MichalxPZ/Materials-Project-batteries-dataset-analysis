@@ -64,16 +64,18 @@ Poniżej znajduje się lista kroków wykonanych na zbiorze danych w celu przygot
 
 ### Struktura danych
 ```{r data-structure, echo=FALSE}
-str(df)
+str_output <- capture.output(str(df))
+kable(matrix(str_output, ncol = 1), col.names = "Struktura ramki danych")
 ```
 ### Kilka pierwszych wierszy ze zbioru danych
 ```{r data-head, echo=FALSE}
-head(df)
+DT::datatable(head(df, 30), style="bootstrap", filter = "top", rownames = FALSE, extensions = "Buttons", options = list(scrollX = TRUE, dom = 'Bfrtip'))
 ```
 ### Analiza jakości danych
 Sprawdzenie ile jest pustych wartościami w poszczególnych kolumnach oraz ile w zbiorze jest zduplikowanych wierszy.
 ```{r data-missing-values}
-colSums(is.na(df))
+na_counts <- colSums(is.na(df))
+kable(na_counts, col.names = c("Brakujące wartości"), caption = "Liczba brakujących wartości w kolumnach")
 ```
 ```{r data-duplicates}
 duplicates_count <- sum(duplicated(df))
@@ -116,8 +118,10 @@ ggplotly(p)
 ```
 
 ```{r analiza-rozkładu-maksymalnej zmiany objętości}
+mean <- mean(df$Max.Delta.Volume, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Max.Delta.Volume`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład maksymalnej zmiany objętości dla danego kroku",
     x = "Maksymalna zmiana objętości",
@@ -128,8 +132,10 @@ p1 <- ggplot(df, aes(x = `Max.Delta.Volume`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Średnie napięcie}
+mean <- mean(df$Average.Voltage, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Average.Voltage`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład średniego napięcia",
     x = "Średnie napięcie",
@@ -140,8 +146,10 @@ p1 <- ggplot(df, aes(x = `Average.Voltage`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Pojemność grawimetryczna}
+mean <- mean(df$Gravimetric.Capacity, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Gravimetric.Capacity`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład pojemności grawimetrycznej",
     x = "Pojemność grawimetryczna",
@@ -152,8 +160,10 @@ p1 <- ggplot(df, aes(x = `Gravimetric.Capacity`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Pojemność wolumetryczna}
+mean <- mean(df$Volumetric.Capacity, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Volumetric.Capacity`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład pojemności wolumetrycznej",
     x = "Pojemność wolumetryczna",
@@ -164,8 +174,10 @@ p1 <- ggplot(df, aes(x = `Volumetric.Capacity`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Gęstość energii w odniesieniu do masy baterii}
+mean <- mean(df$Gravimetric.Energy, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Gravimetric.Energy`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład energii grawimetrycznej",
     x = "Energia grawimetryczna",
@@ -176,8 +188,10 @@ p1 <- ggplot(df, aes(x = `Gravimetric.Energy`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Gęstość energii w odniesieniu do objętości baterii}
+mean <- mean(df$Volumetric.Energy, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Volumetric.Energy`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład energii wolumetrycznej",
     x = "Energia wolumetryczna",
@@ -188,8 +202,10 @@ p1 <- ggplot(df, aes(x = `Volumetric.Energy`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Udział atomowy składników w stanie naładowanym}
+mean <- mean(df$Atomic.Fraction.Charge, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Atomic.Fraction.Charge`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład udziału atomowego składników w stanie naładowanym",
     x = "Udział atomowy składników",
@@ -200,8 +216,10 @@ p1 <- ggplot(df, aes(x = `Atomic.Fraction.Charge`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Udział atomowy składników w stanie rozładowanym}
+mean <- mean(df$Atomic.Fraction.Discharge, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Atomic.Fraction.Discharge`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład udziału atomowego składników w stanie rozładowanym",
     x = "Udział atomowy składników",
@@ -212,8 +230,10 @@ p1 <- ggplot(df, aes(x = `Atomic.Fraction.Discharge`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Wskaźnik stabilności materiału w stanie naładowanym}
+mean <- mean(df$Stability.Charge, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Stability.Charge`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład wskaźnika stabilności materiału w stanie naładowanym",
     x = "Wskaźnik stabilności materiału",
@@ -225,8 +245,10 @@ ggplotly(p1)
 
 ```
 ```{r analiza-rozkładu-Wskaźnik stabilności materiału w stanie rozładowanym}
+mean <- mean(df$Stability.Discharge, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Stability.Discharge`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład wskaźnika stabilności materiału w stanie rozładowanym",
     x = "Wskaźnik stabilności materiału",
@@ -237,8 +259,10 @@ p1 <- ggplot(df, aes(x = `Stability.Discharge`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Liczba odrębnych kroków napięcia od pełnego naładowania do rozładowana}
+mean <- mean(df$Steps, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Steps`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład liczba odrębnych kroków napięcia od pełnego naładowania do rozładowana",
     x = "Liczba kroków",
@@ -249,8 +273,10 @@ p1 <- ggplot(df, aes(x = `Steps`)) +
 ggplotly(p1)
 ```
 ```{r analiza-rozkładu-Maksymalna bezwzględna różnica między sąsiednimi krokami napięcia}
+mean <- mean(df$Max.Voltage.Step, na.rm = TRUE)
 p1 <- ggplot(df, aes(x = `Max.Voltage.Step`)) +
   geom_histogram(fill = "blue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = mean), color = "red", linetype = "dashed", size = 1) +
   labs(
     title = "Rozkład maksymalnej bezwzględnej różnica między sąsiednimi krokami napięcia",
     x = "Maksymalna bezwzględna różnica między sąsiednimi krokami napięcia",
@@ -386,7 +412,11 @@ model_lm <- train(
 
 ### Podsumowanie modelu
 ```{r, podsumowanie-modelu, cache = TRUE}
-summary(model_lm)
+model_summary <- summary(model_lm)
+
+kable(as.data.frame(model_summary$coefficients),
+      caption = "Podsumowanie wyników modelu liniowego",
+      col.names = c("Współczynnik", "Wartość", "Standard Error", "t-Statystyka", "p-Wartość"))
 ```
 
 ### Predykcje na zbiorze testowym
@@ -394,14 +424,14 @@ summary(model_lm)
 predictions <- predict(model_lm, newdata = testing_data)
 post_resample <- postResample(pred = predictions,
                               obs = testing_data$Average.Voltage)
-post_resample
+kable(post_resample, col.names = c("RMSE", "R^2", "MAE"), caption = "Ocena modelu - metryki jakości predykcji")
 ```
 
 ### Ocena modelu
 ```{r, ocena-modelu, cache = TRUE}
 rmse <- sqrt(mean((testing_data$Average.Voltage - predictions)^2))
-cat("RMSE na zbiorze testowym:", rmse)
 ```
+RMSE na zbiorze testowym: `r rmse`
 
 Poniższy wykres przedstawia wartości zbioru testowego oraz wartości przewidziane
 przez regresor.
@@ -413,20 +443,42 @@ prediction_comparison_df <- tibble(X = testing_data$Battery.ID,
 prediction_comparison_df$Observation <- seq_along(prediction_comparison_df$X)
 
 p <- ggplot(prediction_comparison_df, aes(x = Observation)) +
-  geom_smooth(aes(y = actual, color = "Wartość rzeczywista"), method = "lm", se = FALSE, linetype = "solid") +
-  geom_smooth(aes(y = predicted, color = "Wartość przewidziana"), method = "lm", se = FALSE, linetype = "dashed") +
-  geom_line(aes(y = actual, color = "Wartość rzeczywista"), linetype = "solid", alpha = 0.2) +
-  geom_line(aes(y = predicted, color = "Wartość przewidziana"), linetype = "dashed", alpha = 0.2) +
+  geom_line(aes(y = actual, color = "Wartość rzeczywista"), linetype = "solid", alpha = 0.5) +
+  geom_line(aes(y = predicted, color = "Wartość przewidziana"), linetype = "dashed", alpha = 0.5) +
   labs(color = "Wartości", x = "Nr obserwacji", y = "Average Voltage [V]") +
   theme_light() +
   scale_x_continuous(
     breaks = seq(1, nrow(prediction_comparison_df), by = 1000),
     labels = scales::comma_format()
-  ) +  scale_y_continuous(
+  ) +
+  scale_y_continuous(
     limits = c(min(prediction_comparison_df$actual, prediction_comparison_df$predicted),
                max(prediction_comparison_df$actual, prediction_comparison_df$predicted))
-  ) +  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-ggplotly(p)
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+interactive_plot <- ggplotly(p) %>%
+  layout(
+    hovermode = "x unified",
+    xaxis = list(
+      title = "Nr obserwacji"
+    ),
+    yaxis = list(
+      title = "Average Voltage [V]"
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = 0,
+        x1 = 1,
+        y0 = 0,
+        y1 = 1,
+        line = list(color = "gray", dash = "dot")
+      )
+    )
+  )
+
+interactive_plot
 ```
 
 ### Ważność atrybutów
